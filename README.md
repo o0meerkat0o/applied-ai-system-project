@@ -1,138 +1,195 @@
-# 🎵 Music Recommender Simulation
+# 🎵 Applied AI Music Recommender System
 
-## Project Summary
-
-This project builds a small content-based music recommender system in Python. It represents songs as structured data objects, encodes user taste as a preference profile, and uses a weighted scoring function to rank songs and explain why each one was selected. The system is tested across multiple user profiles to explore how different taste preferences produce different recommendations.
+> An evolution of the Module 3 Music Recommender, now with Retrieval-Augmented Generation (RAG), Gemini-powered explanations, input validation guardrails, and an automated evaluation harness.
 
 ---
 
-## How The System Works
+## Base Project
 
-Real-world music recommenders like Spotify combine two main strategies: collaborative filtering, which identifies users with similar listening behavior and surfaces what they enjoyed, and content-based filtering, which matches a user's taste profile directly to song attributes like genre, tempo, and energy. Platforms layer these with engagement signals (skips, saves, replays) to continuously refine predictions.
+This system extends the **Music Recommender Simulation** built in Module 3 (AI110). The original project used a weighted content-based filtering approach to rank songs from a 20-song CSV catalog against a user preference profile. It scored each song across four features (genre, mood, energy, acousticness) and returned ranked results with rule-based explanations. The system ran as a CLI script with three standard and three edge-case user profiles.
 
-This simulator uses a simplified content-based approach. Each song is described by a fixed set of musical features, and each user profile encodes a preference value for those same features. A scoring function computes how well each song matches a given profile by rewarding categorical matches (genre, mood) and penalizing distance from numerical targets (energy, tempo). Songs are then ranked by score to produce recommendations, and each result includes a short explanation tied to the actual scoring logic.
+---
 
-**Features used in `Song` objects:**
-- `title`, `artist` — metadata
-- `genre` — categorical (pop, rock, lofi, jazz, edm, hip-hop, folk, country, r&b, ambient, synthwave, indie pop)
-- `mood` — categorical (happy, chill, intense, moody, relaxed, focused)
-- `energy` — float 0.0–1.0, overall intensity
-- `tempo_bpm` — beats per minute
-- `valence` — float 0.0–1.0, musical positivity
-- `danceability` — float 0.0–1.0
-- `acousticness` — float 0.0–1.0
+## What's New
 
-**Features used in `UserProfile` objects:**
-- `favorite_genre` — preferred genre string
-- `favorite_mood` — preferred mood string
-- `target_energy` — desired energy level (0.0–1.0)
-- `likes_acoustic` — boolean preference for acoustic vs. electronic sound
+| Feature | Description |
+|---|---|
+| **RAG retrieval** | Genre knowledge base (10 `.txt` docs) retrieved at query time to ground explanations |
+| **Gemini AI explanations** | Google Gemini API generates natural-language explanations using retrieved context |
+| **Input guardrails** | Validates profiles before scoring, blocks bad inputs, warns on conflicting preferences |
+| **Evaluation harness** | `src/evaluator.py` runs 6 predefined tests and prints pass/fail summary |
+| **Graceful fallback** | Falls back to rule-based explanations automatically if the API key is missing or the call fails |
 
-### Algorithm Recipe
+---
 
-For each song in the catalog, the recommender computes a score using these weighted rules:
+## System Architecture
 
-| Rule | Points |
-|------|--------|
-| Genre matches user's `favorite_genre` | +3.0 |
-| Mood matches user's `favorite_mood` | +2.0 |
-| Energy proximity: `1 - abs(target_energy - song_energy)` | +1.5 × similarity |
-| Acousticness alignment with `likes_acoustic` | +1.0 |
-
-Genre receives the highest weight because it is the strongest single predictor of taste. Mood is second because it captures the emotional context a user is seeking. Energy proximity is continuous rather than binary, so a song that is close but not exact still earns partial credit. Acousticness acts as a tiebreaker for users who have a strong preference for organic vs. electronic sound.
-
-Songs are ranked by total score (descending) and the top K results are returned with explanations.
-
-### Data Flow
-
-```mermaid
-flowchart TD
-    A[UserProfile\ngenre · mood · energy · likes_acoustic] --> B[Load songs.csv]
-    B --> C{For each Song}
-    C --> D[score_song\ngenre match +3.0\nmood match +2.0\nenergy proximity x1.5\nacousticness +1.0]
-    D --> E[Attach score to Song]
-    E --> C
-    C --> F[Sort all songs by score descending]
-    F --> G[Return Top K Songs]
-    G --> H[explain_recommendation\nfor each result]
-    H --> I[Print ranked list\nwith explanations]
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        USER INPUT                           │
+│              (genre, mood, energy, likes_acoustic)          │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   GUARDRAILS (guardrails.py)                 │
+│  Validate energy range, genre, mood. Warn on conflicts.     │
+└──────────┬──────────────────────────────────────────────────┘
+           │ valid profile
+           ▼
+┌──────────────────────┐    ┌────────────────────────────────┐
+│  RECOMMENDER         │    │  RAG RETRIEVAL (rag.py)        │
+│  (recommender.py)    │    │  Load genre .txt doc and       │
+│  score + rank songs  │    │  build context string          │
+└──────────┬───────────┘    └──────────────┬─────────────────┘
+           │ top-k songs                   │ genre context
+           └───────────────┬───────────────┘
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   EXPLAINER (explainer.py)                  │
+│  Call Gemini API with song + user prefs + RAG context.      │
+│  Fallback to rule-based explanation if API unavailable.     │
+└────────────────────────┬────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        OUTPUT                               │
+│         Ranked list: title, score, AI explanation           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Expected Bias
-
-This system may over-prioritize genre at the expense of mood, since the genre weight (3.0) is large enough that two songs with the same genre will often outscore a better mood+energy match in a different genre. A user who enjoys jazz but is in an intense mood may receive relaxed jazz recommendations rather than intense songs in another genre that fit the moment better. A future fix would be to allow users to set their own weights per session.
-
 ---
 
-## Getting Started
+## Setup Instructions
 
-### Setup
-
-1. Create a virtual environment (optional but recommended):
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run the app:
-
-   ```bash
-   python -m src.main
-   ```
-
-### Running Tests
+### 1. Clone and enter the repo
 
 ```bash
-pytest
+git clone https://github.com/o0meerkat0o/applied-ai-system-project.git
+cd applied-ai-system-project
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+### 2. Create a virtual environment
+
+```bash
+python -m venv .venv
+source .venv/bin/activate      # Mac/Linux
+.venv\Scripts\activate         # Windows
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Add your Gemini API key
+
+Create a `.env` file in the project root:
+
+```
+GEMINI_API_KEY=your_key_here
+```
+
+Get your free key at [aistudio.google.com](https://aistudio.google.com). No credit card required. The system works without a key and falls back to rule-based explanations automatically.
+
+### 5. Run the system
+
+```bash
+python -m src.main
+```
+
+### 6. Run the evaluation harness
+
+```bash
+python -m src.evaluator
+```
+
+### 7. Run the original tests
+
+```bash
+python -m pytest
+```
 
 ---
 
-## Experiments You Tried
+## Sample Interactions
 
-### Alex — Pop / Happy / High Energy
-![Alex profile output](screenshots/alex_profile.png)
+### Example 1: Standard profile with AI explanation
 
-### Sam — Lofi / Chill / Acoustic
-![Sam profile output](screenshots/sam_profile.png)
+```
+Profile: Alex  Pop / Happy / High Energy
+  genre=pop  mood=happy  energy=0.85  acoustic=False
 
-### Jordan — EDM / Intense / High Energy
-![Jordan profile output](screenshots/jordan_profile.png)
+  #1  Sunrise City  Neon Echo
+       Score : 7.46
+       Why   : Sunrise City fits Alex perfectly. It is an upbeat pop track
+               with high energy and a happy mood, exactly the kind of
+               polished, danceable sound pop listeners gravitate toward.
+```
 
-### Riley — Conflicting Preferences (ambient + high energy)
-![Riley profile output](screenshots/riley_profile.png)
+### Example 2: Guardrail blocking a bad profile
 
-### Morgan — Conflicting Preferences (acoustic folk + intense mood)
-![Morgan profile output](screenshots/morgan_profile.png)
+```
+Profile: Bad Profile 1  energy out of range
+  genre=pop  mood=happy  energy=1.8  acoustic=False
 
-### Casey — Niche Genre / Low Catalog Coverage (country)
-![Casey profile output](screenshots/casey_profile.png)
+  [GUARDRAIL] ERROR: energy must be between 0.0 and 1.0, got 1.8.
+  Skipping recommendations due to invalid profile.
+```
 
-When the genre weight was dominant (3.0), profiles with niche genres like country and folk received strong first results but weak fallbacks — Casey's #2 and beyond were unrelated jazz songs simply because no other country songs existed. Lowering the genre weight and raising the energy weight shifted Riley's results toward higher-energy songs, confirming that the genre weight was overriding the energy target entirely. The EDM and lofi profiles consistently produced the most intuitive results because those genres had multiple songs in the catalog covering a range of moods.
+### Example 3: Conflict warning (still runs, but warned)
+
+```
+Profile: Riley  Conflicting Preferences (ambient + high energy)
+  genre=ambient  mood=chill  energy=0.9  acoustic=False
+
+  [GUARDRAIL] WARNING: ambient is a low-energy genre but you requested
+  energy=0.9. Recommendations may not match your energy target.
+
+  #1  Spacewalk Thoughts  Orbit Bloom
+       Score : 5.57
+       Why   : Spacewalk Thoughts is the closest ambient match available,
+               though ambient music is fundamentally quiet and atmospheric.
+               Switching to edm or rock would better serve a high-energy need.
+```
 
 ---
 
-## Limitations and Risks
+## Design Decisions
 
-- Catalog is small (20 songs), so niche preferences may find few or no close matches.
-- The system does not understand lyrics, language, or cultural context.
-- Genre weighting may cause it to recommend songs that match the label but not the actual sound (e.g., two very different "rock" songs).
-- No user history or feedback loop — preferences are static and hand-coded.
+**Why RAG over static templates?** Rule-based explanations just repeat the scoring math. RAG lets the system pull real genre knowledge and pass it to Gemini so explanations reference actual musical characteristics like tempo ranges, cultural context, and listener use cases.
+
+**Why a fallback to rule-based?** The system should work without an API key. Students, reviewers, and CI pipelines should not need credentials just to run the code.
+
+**Why does invalid genre block hard but energy conflict only warn?** An unrecognized genre breaks the scoring function entirely. An energy conflict is softer and results are still meaningful, just potentially surprising.
+
+**Why Gemini?** The Gemini API has a free tier with no credit card required, which makes this project accessible and reproducible without any cost barrier.
+
+---
+
+## Testing Summary
+
+```
+6/6 tests passed
+- 3 scoring correctness tests: top result matched expected genre and mood ✓
+- 2 guardrail block tests: invalid profiles correctly rejected ✓
+- 1 niche-genre test: country profile returned correct #1 result ✓
+```
+![Evaluator output](assets/evaluator.png)
+![Standard profiles](assets/standard_profiles.png)
+![Edge case profiles](assets/edge_profiles.png)
+![Guardrail demo](assets/guardrails.png)
 
 ---
 
 ## Reflection
 
-[**Model Card**](model_card.md)
+Building this extension showed how much the explanation layer matters for user trust. The original rule-based explanations feel mechanical. Passing the same data through Gemini with retrieved genre context produces explanations that feel like advice from someone who actually knows music.
 
-Building this project showed me how much a single design decision — like how much weight to give genre — shapes everything the system does, even when you think other features like energy or mood are equally important. The biggest surprise was testing the Riley edge case: a user who wanted high-energy ambient music got the two quietest songs in the catalog, because the genre weight alone was strong enough to override the energy target completely. I also didn't expect the catalog size to matter so much — once you have only one country song, the whole ranking below rank 1 collapses into unrelated fallbacks, which made the limits of small datasets feel very real. Using AI tools throughout helped me move faster on the boilerplate and structure, but I had to actively check that the scoring logic and explanations matched each other rather than just trusting that the output looked right.
+The most useful AI suggestion during development was the structure for the RAG context string. Including both the genre document and a summary of user preferences in the same prompt gave Gemini enough grounding to write specific, accurate explanations. The flawed suggestion was using cosine similarity on TF-IDF vectors for retrieval across 10 documents, which added unnecessary complexity when a simple dictionary lookup is faster and more predictable.
+
+---
+
+## Model Card
+
+[**Model Card**](model_card.md)
