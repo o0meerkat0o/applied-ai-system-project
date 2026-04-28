@@ -175,10 +175,23 @@ Profile: Riley  Conflicting Preferences (ambient + high energy)
 - 2 guardrail block tests: invalid profiles correctly rejected ✓
 - 1 niche-genre test: country profile returned correct #1 result ✓
 ```
-![Evaluator output](assets/evaluator.png)
+## Demo Walkthrough
+
+### Step 1: Standard profiles running
 ![Standard profiles](assets/standard_profiles.png)
-![Edge case profiles](assets/edge_profiles.png)
-![Guardrail demo](assets/guardrails.png)
+Alex (pop/happy), Sam (lofi/chill), and Jordan (EDM/intense) each receive ranked recommendations with scores and explanations tied to the scoring logic.
+
+### Step 2: Edge case profiles and guardrail warnings
+![Edge cases](assets/edge_profiles.png)
+Riley (ambient + high energy) and Morgan (folk + intense) trigger conflict warnings before recommendations are returned.
+
+### Step 3: Invalid profiles blocked by guardrails
+![Guardrails](assets/guardrails.png)
+Bad Profile 1 (energy=1.8) and Bad Profile 2 (unknown genre) are caught and blocked before reaching the recommender.
+
+### Step 4: Evaluation harness results
+![Evaluator](assets/evaluator.png)
+6/6 test cases pass, covering scoring correctness and guardrail blocking.
 
 ---
 
